@@ -21,3 +21,12 @@ wasm-bindgen --out-dir ./html/wasm --target web ./target/wasm32-unknown-unknown/
 ```bash
 npx serve html
 ```
+
+## Prepare Assets
+
+Glue and convert tarot into one image
+
+```bash
+cd tarot
+montage *.jpg -tile 8x10 -geometry +0+0 ../classic.png
+```
