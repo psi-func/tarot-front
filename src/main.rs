@@ -1,6 +1,6 @@
 use bevy::{
     prelude::*,
-    sprite::{MaterialMesh2dBundle, Mesh2d}, utils::info,
+    sprite::{MaterialMesh2dBundle, Mesh2d},
 };
 use bevy_simple_text_input::{TextInputBundle, TextInputPlugin, TextInputSubmitEvent};
 
@@ -105,9 +105,7 @@ fn listener(
             .insert(MainDeck)
             .id();
 
-        for mut en in greet.iter() {
-            commands.entity(en).clear_children();
-        }
+        commands.entity(greet.single()).clear_children();
 
         commands.init_resource::<Deck>();
     }
