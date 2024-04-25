@@ -31,6 +31,6 @@ cd tarot
 montage *.jpg -tile 8x10 -geometry +0+0 ../classic.png
 
 # better result
-montage *.jpg -tile 8X10 -geometry +0+0 -resize 240X400^ -gravity center -crop 240X400+0+0 ../classic.tmp.png
+montage $(ls -1 *.jpg | sort -g) -tile 8X10 -geometry +0+0 -resize 240X400^ -gravity center -crop 240X400+0+0 ../classic.tmp.png
 convert ../classic.tmp.png -depth 8 ../classic.png # due to issue https://github.com/bevyengine/bevy/issues/4532
 ```
