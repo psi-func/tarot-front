@@ -1,4 +1,4 @@
-use reqwest_wasm::Client;
+use reqwest::;
 use serde_json::Value;
 
 use crate::config::{GET_EXPLANATION, GET_TAROT, SERVER_ADDRESS};
@@ -19,7 +19,7 @@ pub fn get(rt: RegType) -> Result<serde_json::Value, Error> {
 
     let client = Client::new();
 
-    match client.get(req.as_str()). {
+    match client.get(req.as_str()) {
         Ok(resp) => {
             let data: serde_json::Value = resp.json().unwrap();
             Ok(data)

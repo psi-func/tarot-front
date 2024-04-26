@@ -96,16 +96,12 @@ fn listener(
         info!("{:?} submitted: {}", event.entity, event.value);
 
         let entity = commands
-            .spawn(MaterialMesh2dBundle {
-                mesh: meshes.add(Rectangle::default()).into(),
-                transform: Transform::default().with_scale(Vec3::splat(128.)),
-                material: materials.add(Color::PURPLE),
-                ..Default::default()
+            .spawn(Sprite
             })
             .insert(MainDeck)
             .id();
 
-        commands.entity(greet.single()).clear_children();
+        commands.entity(greet.single()).despawn_recursive();
 
         commands.init_resource::<Deck>();
     }
@@ -113,7 +109,7 @@ fn listener(
 
 fn click_deck(
     mut commands: Commands,
-    meshes: Query<(Entity, &Transform), With<MainDeck>>,
+    meshes: Query<(Entity, &Transform, &Handle<Image>), With<MainDeck>>,
     window: Query<&Window>,
     event_mouse: Res<ButtonInput<MouseButton>>,
     mut deck: ResMut<Deck>,
@@ -122,15 +118,16 @@ fn click_deck(
         // check collision
         let coords = window.single().cursor_position();
 
+
+
         info!("{}", coords.unwrap());
+        
+        let (en, tr) = meshes.single();
+        info!("{}", tr.translation);
 
-        for (en, tr) in meshes.iter() {
-            info!("{}", tr.translation);
+        let cards = deck.get_cards(1);
+        info!("{:?}", cards);
 
-            let cards = deck.get_cards(1);
-            info!("{:?}", cards);
-
-            // than spawn new card
-        }
+        // spawn new card?
     }
 }
