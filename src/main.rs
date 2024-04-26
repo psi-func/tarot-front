@@ -86,7 +86,8 @@ struct MainDeck;
 
 #[derive(Resource)]
 struct DeckHolder {
-    container: Entity,
+    card_container: Entity,
+    deck_parent: Entity,
     deck: Deck,
     style: Style,
     texture_atlas: Handle<TextureAtlasLayout>,
@@ -96,12 +97,12 @@ struct DeckHolder {
 impl DeckHolder {
     fn spawn_tarot(&mut self, commands: &mut Commands) {
         let mut texture_atlas: TextureAtlas = self.texture_atlas.clone().into();
-        
+
         let cards = self.deck.get_cards(1);
         let card = cards.iter().nth(0).unwrap();
         info!("{:?}", card);
 
-        let card_id : u8 = card.clone().into();
+        let card_id: u8 = card.clone().into();
         texture_atlas.index = card_id as usize;
 
         let new_tarot_card = commands
@@ -113,7 +114,7 @@ impl DeckHolder {
             })
             .id();
 
-        let mut parent = commands.entity(self.container);
+        let mut parent = commands.entity(self.card_container);
         parent.add_child(new_tarot_card);
     }
 }
@@ -134,7 +135,8 @@ fn listener(
         let texture_atlas =
             TextureAtlasLayout::from_grid(Vec2::new(240.0, 400.0), 8, 10, None, None);
         let texture_atlas_handle = texture_atlases.add(texture_atlas);
-        let mut container: Option<Entity> = None;
+        let mut card_container: Option<Entity> = None;
+        let mut deck_parent: Option<Entity> = None;
 
         let style = Style {
             width: Val::Percent(100.0),
@@ -142,7 +144,14 @@ fn listener(
             flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
-            row_gap: Val::Px(40.0),
+            row_gap: Val::Percent(5.0),
+            ..Default::default()
+        };
+
+        let style_card = Style {
+            width: Val::Px(153.6),
+            height: Val::Px(256.),
+            margin: UiRect::axes(Val::Px(20.), Val::Auto),
             ..Default::default()
         };
 
@@ -152,43 +161,60 @@ fn listener(
                 ..Default::default()
             })
             .with_children(|parent| {
-                let style = Style {
-                    width: Val::Px(153.6),
-                    height: Val::Px(256.),
-                    ..default()
-                };
-
-                let mut texture_atlas: TextureAtlas = texture_atlas_handle.clone().into();
-                texture_atlas.index = 78;
-                parent
-                    .spawn(AtlasImageBundle {
-                        style: style.clone(),
-                        texture_atlas: texture_atlas,
-                        image: UiImage::new(texture_handle.clone()),
-                        ..default()
-                    })
-                    .insert(MainDeck);
-
-                container = Some(parent
-                    .spawn(NodeBundle {
-                        style: Style {
-                            width: Val::Percent(100.0),
-                            height: Val::Percent(100.0),
-                            flex_direction: FlexDirection::Row,
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            margin: UiRect::all(Val::Px(40.0)),
+                deck_parent = Some(
+                    parent
+                        .spawn(NodeBundle {
+                            style: Style {
+                                width: Val::Percent(100.0),
+                                height: Val::Percent(100.0),
+                                flex_direction: FlexDirection::Row,
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                margin: UiRect::all(Val::Px(40.0)),
+                                ..Default::default()
+                            },
                             ..Default::default()
-                        },
-                        ..Default::default()
-                    })
-                    .id());
+                        })
+                        .with_children(|deck_par| {
+                            let mut texture_atlas: TextureAtlas =
+                                texture_atlas_handle.clone().into();
+                            texture_atlas.index = 78;
+
+                            deck_par
+                                .spawn(AtlasImageBundle {
+                                    style: style_card.clone(),
+                                    texture_atlas: texture_atlas,
+                                    image: UiImage::new(texture_handle.clone()),
+                                    ..default()
+                                })
+                                .insert(MainDeck);
+                        })
+                        .id(),
+                );
+
+                card_container = Some(
+                    parent
+                        .spawn(NodeBundle {
+                            style: Style {
+                                width: Val::Percent(100.0),
+                                height: Val::Percent(100.0),
+                                flex_direction: FlexDirection::Row,
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                margin: UiRect::all(Val::Px(40.0)),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        })
+                        .id(),
+                );
             });
 
         commands.insert_resource(DeckHolder {
-            style,
+            style: style_card.clone(),
             texture_handle,
-            container: container.unwrap(),
+            deck_parent: deck_parent.unwrap(),
+            card_container: card_container.unwrap(),
             texture_atlas: texture_atlas_handle,
             deck: Deck::default(),
         });
@@ -199,15 +225,20 @@ fn click_deck(
     mut commands: Commands,
     meshes: Query<(Entity, &Transform), With<MainDeck>>,
     window: Query<&Window>,
+    asset_server: Res<AssetServer>,
     event_mouse: Res<ButtonInput<MouseButton>>,
     mut deck_holder: Option<ResMut<DeckHolder>>,
+    mut cur_cards: Local<usize>,
 ) {
-    if (deck_holder.is_none()) {
+    if deck_holder.is_none() {
         return;
     }
 
     if event_mouse.just_pressed(MouseButton::Left) {
-        // check collision
+        if *cur_cards >= 5 {
+            return;
+        }
+        // TODO: check collision
         let coords = window.single().cursor_position();
 
         info!("{}", coords.unwrap());
@@ -215,7 +246,46 @@ fn click_deck(
         let (en, tr) = meshes.single();
         info!("{}", tr.translation);
 
-        deck_holder.unwrap().spawn_tarot(&mut commands);
-        // spawn new card?
+        deck_holder
+            .as_deref_mut()
+            .unwrap()
+            .spawn_tarot(&mut commands);
+        *cur_cards += 1;
+
+        if *cur_cards == 5 {
+            // remove card
+            commands
+                .entity(deck_holder.as_deref().unwrap().deck_parent)
+                .despawn_descendants();
+
+            // TODO: get text
+            let text = String::from("Died");
+
+            let font = asset_server.load("fonts/FiraMono-Medium.ttf");
+            let text_style = TextStyle {
+                font: font.clone(),
+                font_size: 20.0,
+                color: TEXT_COLOR.into(),
+            };
+
+            let res_entity = commands
+                .spawn(TextBundle {
+                    text: Text::from_section(text.as_str(), text_style.clone())
+                        .with_justify(JustifyText::Center),
+
+                    style: Style {
+                        width: Val::Percent(90.0),
+                        padding: UiRect::left(Val::Percent(10.0)),
+                        margin: UiRect::all(Val::Px(20.)),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .id();
+
+            commands
+                .entity(deck_holder.as_deref().unwrap().deck_parent)
+                .add_child(res_entity);
+        }
     }
 }

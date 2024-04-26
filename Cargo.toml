@@ -15,7 +15,7 @@ web-sys = { version = "0.3" }
 js-sys = { version = "0.3" }
 
 bevy = { version = "0.13" }
-bevy_simple_text_input = { git = "https://github.com/rparrett/bevy_simple_text_input.git", branch = "latest" }
+bevy_simple_text_input = "0.6.1"
 
 
 serde = { version = "1.0" }

@@ -20,6 +20,8 @@ wasm-bindgen --out-dir ./html/wasm --target web ./target/wasm32-unknown-unknown/
 
 ```bash
 npx serve html
++#or
++python3 -m http.server 3000
 ```
 
 ## Prepare Assets
