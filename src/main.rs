@@ -13,7 +13,6 @@ use tarot_front::resources::deck::Deck;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
-        .init_resource::<Deck>()
         .add_plugins(TextInputPlugin)
         .add_systems(Startup, setup_camera)
         .add_systems(Startup, setup)
@@ -85,49 +84,138 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 #[derive(Component)]
 struct MainDeck;
 
+#[derive(Resource)]
+struct DeckHolder {
+    container: Entity,
+    deck: Deck,
+    style: Style,
+    texture_atlas: Handle<TextureAtlasLayout>,
+    texture_handle: Handle<Image>,
+}
+
+impl DeckHolder {
+    fn spawn_tarot(&mut self, commands: &mut Commands) {
+        let mut texture_atlas: TextureAtlas = self.texture_atlas.clone().into();
+        
+        let cards = self.deck.get_cards(1);
+        let card = cards.iter().nth(0).unwrap();
+        info!("{:?}", card);
+
+        let card_id : u8 = card.clone().into();
+        texture_atlas.index = card_id as usize;
+
+        let new_tarot_card = commands
+            .spawn(AtlasImageBundle {
+                style: self.style.clone(),
+                texture_atlas: texture_atlas,
+                image: UiImage::new(self.texture_handle.clone()),
+                ..default()
+            })
+            .id();
+
+        let mut parent = commands.entity(self.container);
+        parent.add_child(new_tarot_card);
+    }
+}
+
 fn listener(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut greet: Query<Entity, With<GreetWindow>>,
+    asset_server: Res<AssetServer>,
+    mut texture_atlases: ResMut<Assets<TextureAtlasLayout>>,
+    greet: Query<Entity, With<GreetWindow>>,
     mut events: EventReader<TextInputSubmitEvent>,
 ) {
     for event in events.read() {
         info!("{:?} submitted: {}", event.entity, event.value);
 
-        let entity = commands
-            .spawn(Sprite
-            })
-            .insert(MainDeck)
-            .id();
-
         commands.entity(greet.single()).despawn_recursive();
 
-        commands.init_resource::<Deck>();
+        let texture_handle = asset_server.load("tarot/classic.png");
+        let texture_atlas =
+            TextureAtlasLayout::from_grid(Vec2::new(240.0, 400.0), 8, 10, None, None);
+        let texture_atlas_handle = texture_atlases.add(texture_atlas);
+        let mut container: Option<Entity> = None;
+
+        let style = Style {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            row_gap: Val::Px(40.0),
+            ..Default::default()
+        };
+
+        commands
+            .spawn(NodeBundle {
+                style: style.clone(),
+                ..Default::default()
+            })
+            .with_children(|parent| {
+                let style = Style {
+                    width: Val::Px(153.6),
+                    height: Val::Px(256.),
+                    ..default()
+                };
+
+                let mut texture_atlas: TextureAtlas = texture_atlas_handle.clone().into();
+                texture_atlas.index = 78;
+                parent
+                    .spawn(AtlasImageBundle {
+                        style: style.clone(),
+                        texture_atlas: texture_atlas,
+                        image: UiImage::new(texture_handle.clone()),
+                        ..default()
+                    })
+                    .insert(MainDeck);
+
+                container = Some(parent
+                    .spawn(NodeBundle {
+                        style: Style {
+                            width: Val::Percent(100.0),
+                            height: Val::Percent(100.0),
+                            flex_direction: FlexDirection::Row,
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            margin: UiRect::all(Val::Px(40.0)),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    })
+                    .id());
+            });
+
+        commands.insert_resource(DeckHolder {
+            style,
+            texture_handle,
+            container: container.unwrap(),
+            texture_atlas: texture_atlas_handle,
+            deck: Deck::default(),
+        });
     }
 }
 
 fn click_deck(
     mut commands: Commands,
-    meshes: Query<(Entity, &Transform, &Handle<Image>), With<MainDeck>>,
+    meshes: Query<(Entity, &Transform), With<MainDeck>>,
     window: Query<&Window>,
     event_mouse: Res<ButtonInput<MouseButton>>,
-    mut deck: ResMut<Deck>,
+    mut deck_holder: Option<ResMut<DeckHolder>>,
 ) {
+    if (deck_holder.is_none()) {
+        return;
+    }
+
     if event_mouse.just_pressed(MouseButton::Left) {
         // check collision
         let coords = window.single().cursor_position();
 
-
-
         info!("{}", coords.unwrap());
-        
+
         let (en, tr) = meshes.single();
         info!("{}", tr.translation);
 
-        let cards = deck.get_cards(1);
-        info!("{:?}", cards);
-
+        deck_holder.unwrap().spawn_tarot(&mut commands);
         // spawn new card?
     }
 }

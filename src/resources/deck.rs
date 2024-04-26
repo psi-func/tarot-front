@@ -1,11 +1,10 @@
-use bevy::prelude::*;
 use rand::{seq::SliceRandom, thread_rng};
 
 use super::card::CardId;
 
 const NUM_CARDS: u8 = 78;
 
-#[derive(Clone, Resource)]
+#[derive(Clone)]
 pub struct Deck {
     pub cards: Vec<CardId>,
 }

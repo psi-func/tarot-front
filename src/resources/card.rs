@@ -1,6 +1,6 @@
 use crate::error::Error;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct CardId(u8);
 
 impl TryFrom<u8> for CardId {
