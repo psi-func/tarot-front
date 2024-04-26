@@ -1,18 +1,18 @@
-use bevy::{
-    prelude::*,
-    sprite::{MaterialMesh2dBundle, Mesh2d},
-};
+use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputPlugin, TextInputSubmitEvent};
+use bevy_wasm_tasks::{WASMTasksPlugin, WASMTasksRuntime};
 
 const BORDER_COLOR_ACTIVE: Color = Color::rgb(0.75, 0.52, 0.99);
 const TEXT_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
 const BACKGROUND_COLOR: Color = Color::rgb(0.15, 0.15, 0.15);
 
-use tarot_front::resources::deck::Deck;
+use tarot_front::connector::*;
+use tarot_front::resources::{deck::Deck, card::CardId};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
+        .add_plugins(WASMTasksPlugin)
         .add_plugins(TextInputPlugin)
         .add_systems(Startup, setup_camera)
         .add_systems(Startup, setup)
@@ -125,10 +125,10 @@ fn listener(
     mut texture_atlases: ResMut<Assets<TextureAtlasLayout>>,
     greet: Query<Entity, With<GreetWindow>>,
     mut events: EventReader<TextInputSubmitEvent>,
+    runtime: ResMut<WASMTasksRuntime>
 ) {
     for event in events.read() {
         info!("{:?} submitted: {}", event.entity, event.value);
-
         commands.entity(greet.single()).despawn_recursive();
 
         let texture_handle = asset_server.load("tarot/classic.png");
@@ -210,14 +210,25 @@ fn listener(
                 );
             });
 
-        commands.insert_resource(DeckHolder {
-            style: style_card.clone(),
-            texture_handle,
-            deck_parent: deck_parent.unwrap(),
-            card_container: card_container.unwrap(),
-            texture_atlas: texture_atlas_handle,
-            deck: Deck::default(),
-        });
+            runtime.spawn_background_task(move |mut ctx| async move {
+                let tarot_cards = post_get_cards().await.unwrap();
+
+                let cards : Vec<_> = tarot_cards.cards.into_iter().map(|el| CardId::try_from(el).unwrap()).collect();
+
+                ctx.run_on_main_thread(move |ctx| {
+                    let world = ctx.world;
+                    world.insert_resource(DeckHolder {
+                        style: style_card.clone(),
+                        texture_handle,
+                        deck_parent: deck_parent.unwrap(),
+                        card_container: card_container.unwrap(),
+                        texture_atlas: texture_atlas_handle,
+                        deck: Deck {
+                            cards 
+                        },
+                    });
+                }).await;
+            });   
     }
 }
 
@@ -228,7 +239,9 @@ fn click_deck(
     asset_server: Res<AssetServer>,
     event_mouse: Res<ButtonInput<MouseButton>>,
     mut deck_holder: Option<ResMut<DeckHolder>>,
+    runtime: ResMut<WASMTasksRuntime>,
     mut cur_cards: Local<usize>,
+    mut deck: Local<Vec<u16>>,
 ) {
     if deck_holder.is_none() {
         return;
@@ -258,7 +271,11 @@ fn click_deck(
                 .entity(deck_holder.as_deref().unwrap().deck_parent)
                 .despawn_descendants();
 
-            // TODO: get text
+           
+            let res= runtime.spawn_background_task(|_ctx| async move {
+
+            });
+
             let text = String::from("Died");
 
             let font = asset_server.load("fonts/FiraMono-Medium.ttf");

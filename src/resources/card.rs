@@ -15,6 +15,18 @@ impl TryFrom<u8> for CardId {
     }
 }
 
+impl TryFrom<u16> for CardId {
+    type Error = Error;
+
+    fn try_from(val: u16) -> Result<Self, Error> {
+        if let 1..=78 = val {
+            Ok(Self(u8::try_from(val).unwrap()))
+        } else {
+            Err(Error::invalid_card("Tarot have only 78 cards".into()))
+        }
+    }
+}
+
 impl Into<u8> for CardId {
     fn into(self) -> u8 {
         self.0
