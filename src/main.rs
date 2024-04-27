@@ -293,13 +293,17 @@ fn click_deck(
     }
 }
 
+#[derive(Component)]
+struct TarotExplanation;
+
 fn add_explanation(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     nn_exp: Option<Res<NNPredict>>,
     deck_holder: Option<Res<DeckHolder>>,
+    explained: Query<&TarotExplanation>,
 ) {
-    if nn_exp.is_none() || deck_holder.is_none() {
+    if nn_exp.is_none() || deck_holder.is_none() || explained.iter().len() != 0 {
         return;
     }
 
@@ -325,6 +329,7 @@ fn add_explanation(
             },
             ..Default::default()
         })
+        .insert(TarotExplanation)
         .id();
 
     commands
