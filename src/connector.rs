@@ -27,6 +27,7 @@ pub async fn post_get_cards() -> Result<TarotCards, reqwest::Error> {
 
     match client
         .post(req.as_str())
+        .header("Content-Type", "application/json")
         .body(serde_json::to_string(&body).unwrap())
         .send()
         .await
@@ -46,10 +47,10 @@ pub struct GetTarotExplanation {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct TarotExplanation {
-    exp: String,
+    pub exp: String,
 }
 
-pub async fn post_get_explanation(cards: Vec<u16>) -> Result<TarotCards, reqwest::Error> {
+pub async fn post_get_explanation(cards: Vec<u16>) -> Result<TarotExplanation, reqwest::Error> {
     let mut req = String::from(SERVER_ADDRESS);
     req.push_str(GET_EXPLANATION);
 
@@ -59,12 +60,13 @@ pub async fn post_get_explanation(cards: Vec<u16>) -> Result<TarotCards, reqwest
 
     match client
         .post(req.as_str())
+        .header("Content-Type", "application/json")
         .body(serde_json::to_string(&body).unwrap())
         .send()
         .await
     {
         Ok(resp) => {
-            let data: TarotCards = resp.json().await?;
+            let data: TarotExplanation = resp.json().await?;
             Ok(data)
         }
         Err(err) => Err(err),

@@ -7,7 +7,7 @@ const TEXT_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
 const BACKGROUND_COLOR: Color = Color::rgb(0.15, 0.15, 0.15);
 
 use tarot_front::connector::*;
-use tarot_front::resources::{deck::Deck, card::CardId};
+use tarot_front::resources::{card::CardId, deck::Deck};
 
 fn main() {
     App::new()
@@ -18,6 +18,7 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Update, listener)
         .add_systems(Update, click_deck)
+        .add_systems(Update, add_explanation)
         .run();
 }
 
@@ -95,7 +96,7 @@ struct DeckHolder {
 }
 
 impl DeckHolder {
-    fn spawn_tarot(&mut self, commands: &mut Commands) {
+    fn spawn_tarot(&mut self, commands: &mut Commands) -> u16 {
         let mut texture_atlas: TextureAtlas = self.texture_atlas.clone().into();
 
         let cards = self.deck.get_cards(1);
@@ -116,6 +117,7 @@ impl DeckHolder {
 
         let mut parent = commands.entity(self.card_container);
         parent.add_child(new_tarot_card);
+        card_id as u16
     }
 }
 
@@ -125,7 +127,7 @@ fn listener(
     mut texture_atlases: ResMut<Assets<TextureAtlasLayout>>,
     greet: Query<Entity, With<GreetWindow>>,
     mut events: EventReader<TextInputSubmitEvent>,
-    runtime: ResMut<WASMTasksRuntime>
+    runtime: ResMut<WASMTasksRuntime>,
 ) {
     for event in events.read() {
         info!("{:?} submitted: {}", event.entity, event.value);
@@ -210,99 +212,122 @@ fn listener(
                 );
             });
 
-            runtime.spawn_background_task(move |mut ctx| async move {
-                let tarot_cards = post_get_cards().await.unwrap();
+        runtime.spawn_background_task(move |mut ctx| async move {
+            let tarot_cards = post_get_cards().await.unwrap();
 
-                let cards : Vec<_> = tarot_cards.cards.into_iter().map(|el| CardId::try_from(el).unwrap()).collect();
+            let cards: Vec<_> = tarot_cards
+                .cards
+                .into_iter()
+                .map(|el| CardId::try_from(el).unwrap())
+                .collect();
 
-                ctx.run_on_main_thread(move |ctx| {
-                    let world = ctx.world;
-                    world.insert_resource(DeckHolder {
-                        style: style_card.clone(),
-                        texture_handle,
-                        deck_parent: deck_parent.unwrap(),
-                        card_container: card_container.unwrap(),
-                        texture_atlas: texture_atlas_handle,
-                        deck: Deck {
-                            cards 
-                        },
-                    });
-                }).await;
-            });   
+            ctx.run_on_main_thread(move |ctx| {
+                let world = ctx.world;
+                world.insert_resource(DeckHolder {
+                    style: style_card.clone(),
+                    texture_handle,
+                    deck_parent: deck_parent.unwrap(),
+                    card_container: card_container.unwrap(),
+                    texture_atlas: texture_atlas_handle,
+                    deck: Deck { cards },
+                });
+            })
+            .await;
+        });
     }
+}
+
+#[derive(Resource)]
+struct NNPredict {
+    exp: String,
 }
 
 fn click_deck(
     mut commands: Commands,
     meshes: Query<(Entity, &Transform), With<MainDeck>>,
     window: Query<&Window>,
-    asset_server: Res<AssetServer>,
     event_mouse: Res<ButtonInput<MouseButton>>,
     mut deck_holder: Option<ResMut<DeckHolder>>,
     runtime: ResMut<WASMTasksRuntime>,
-    mut cur_cards: Local<usize>,
-    mut deck: Local<Vec<u16>>,
+    mut opened_cards: Local<Vec<u16>>,
 ) {
     if deck_holder.is_none() {
         return;
     }
 
     if event_mouse.just_pressed(MouseButton::Left) {
-        if *cur_cards >= 5 {
+        if opened_cards.len() >= 5 {
             return;
         }
-        // TODO: check collision
         let coords = window.single().cursor_position();
-
-        info!("{}", coords.unwrap());
-
         let (en, tr) = meshes.single();
-        info!("{}", tr.translation);
+        // TODO: check collision
+        info!("mouse: {}, tr: {}", coords.unwrap(), tr.translation);
 
-        deck_holder
+        let spawned_card = deck_holder
             .as_deref_mut()
             .unwrap()
             .spawn_tarot(&mut commands);
-        *cur_cards += 1;
+        opened_cards.push(spawned_card);
 
-        if *cur_cards == 5 {
+        if opened_cards.len() == 5 {
             // remove card
             commands
                 .entity(deck_holder.as_deref().unwrap().deck_parent)
                 .despawn_descendants();
 
-           
-            let res= runtime.spawn_background_task(|_ctx| async move {
+            let opened_cards = opened_cards.clone();
 
-            });
+            runtime.spawn_background_task(move |mut ctx| async move {
+                let explanation = post_get_explanation(opened_cards).await.unwrap();
 
-            let text = String::from("Died");
-
-            let font = asset_server.load("fonts/FiraMono-Medium.ttf");
-            let text_style = TextStyle {
-                font: font.clone(),
-                font_size: 20.0,
-                color: TEXT_COLOR.into(),
-            };
-
-            let res_entity = commands
-                .spawn(TextBundle {
-                    text: Text::from_section(text.as_str(), text_style.clone())
-                        .with_justify(JustifyText::Center),
-
-                    style: Style {
-                        width: Val::Percent(90.0),
-                        padding: UiRect::left(Val::Percent(10.0)),
-                        margin: UiRect::all(Val::Px(20.)),
-                        ..Default::default()
-                    },
-                    ..Default::default()
+                ctx.run_on_main_thread(move |ctx| {
+                    let world = ctx.world;
+                    world.insert_resource(NNPredict {
+                        exp: explanation.exp,
+                    });
                 })
-                .id();
-
-            commands
-                .entity(deck_holder.as_deref().unwrap().deck_parent)
-                .add_child(res_entity);
+                .await;
+            });
         }
     }
+}
+
+fn add_explanation(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    nn_exp: Option<Res<NNPredict>>,
+    deck_holder: Option<Res<DeckHolder>>,
+) {
+    if nn_exp.is_none() || deck_holder.is_none() {
+        return;
+    }
+
+    let font = asset_server.load("fonts/FiraMono-Medium.ttf");
+    let text_style = TextStyle {
+        font: font.clone(),
+        font_size: 20.0,
+        color: TEXT_COLOR.into(),
+    };
+
+    let text = nn_exp.unwrap().exp.clone();
+
+    let res_entity = commands
+        .spawn(TextBundle {
+            text: Text::from_section(text.as_str(), text_style.clone())
+                .with_justify(JustifyText::Center),
+
+            style: Style {
+                width: Val::Percent(90.0),
+                padding: UiRect::left(Val::Percent(10.0)),
+                margin: UiRect::all(Val::Px(20.)),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .id();
+
+    commands
+        .entity(deck_holder.as_deref().unwrap().deck_parent)
+        .add_child(res_entity);
 }
